@@ -1,0 +1,13 @@
+# Caches do Python
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Segredos
+.env
+
+# Memória interna do Claude Code (não faz parte do projeto)
+.claude/
+
+# output/focus/ é versionado de propósito: os resumos gerados fazem parte
+# do histórico do projeto e devem aparecer no repositório.

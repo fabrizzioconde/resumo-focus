@@ -95,3 +95,24 @@ publicação do boletim, não a data de hoje).
 
 Se já existir um arquivo com esse nome, **não sobrescreva** — registre:
 `Resumo para esta data já existe em output/focus/. Nenhuma ação tomada.`
+
+---
+
+## Passo 6 — Enviar o resumo por e-mail
+
+Envie o documento gerado no Passo 4 por e-mail para **fabrizzioconde@gmail.com**
+usando a ferramenta Gmail disponível.
+
+**Assunto:** `Focus BCB — DD/MM/AAAA` (onde `DD/MM/AAAA` é a data de publicação
+do boletim, no formato brasileiro).
+
+**Corpo:** cole o conteúdo completo do arquivo `.md` gerado, incluindo o
+cabeçalho com a nota de frescor se ela estiver presente.
+
+**Regras:**
+- Envie apenas se o Passo 5 tiver sido concluído com sucesso (arquivo salvo
+  ou já existente).
+- Se o Passo 5 tiver sido pulado por arquivo já existente, não envie o e-mail
+  novamente — o resumo dessa data já foi entregue anteriormente.
+- Se o envio falhar, registre o erro mas não interrompa nem tente reenviar
+  automaticamente.

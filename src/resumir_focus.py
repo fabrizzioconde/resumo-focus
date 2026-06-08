@@ -24,6 +24,18 @@ from pathlib import Path
 
 import anthropic
 
+# Em redes com inspeção de SSL (proxy/antivírus que injeta um certificado raiz
+# próprio), o bundle do certifi não confia na cadeia e a chamada à API falha.
+# O truststore faz o Python usar o repositório de certificados do SO — que já
+# contém esse raiz —, resolvendo sem precisar desabilitar a verificação.
+# É best-effort: se o pacote não estiver instalado, segue com o certifi padrão.
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 # A data do ambiente confirma este como o ID exato do Sonnet 4.6.
 MODELO = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 

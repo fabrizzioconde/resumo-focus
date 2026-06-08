@@ -50,11 +50,12 @@ def baixar(dest: str | Path) -> tuple[date, Path]:
             caminho.write_bytes(resposta.content)
             return data_tentativa, caminho
 
-        # PDF não encontrado nesta data; recua um dia
-        data_tentativa -= timedelta(days=1)
+        # PDF não encontrado nesta data; avança um dia (cobre feriados que adiam
+        # a publicação de segunda para terça, quarta... como descrito no CLAUDE.md)
+        data_tentativa += timedelta(days=1)
 
     raise RuntimeError(
-        f"Nenhum PDF encontrado nas últimas {MAX_TENTATIVAS} tentativas a partir de "
+        f"Nenhum PDF encontrado nas {MAX_TENTATIVAS} tentativas a partir de "
         f"{(ultima_segunda(date.today())).strftime('%Y-%m-%d')}."
     )
 

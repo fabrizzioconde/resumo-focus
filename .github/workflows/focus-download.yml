@@ -5,6 +5,11 @@ on:
     - cron: "15 12 * * 1"   # segunda-feira às 12h15 UTC = 9h15 BRT (UTC-3)
   workflow_dispatch:         # permite disparo manual pela UI do GitHub
 
+# Desde fev/2023 o GITHUB_TOKEN vem somente leitura por padrão em repos novos;
+# sem isso o "git push" do último passo é recusado com 403.
+permissions:
+  contents: write
+
 jobs:
   download:
     runs-on: ubuntu-latest

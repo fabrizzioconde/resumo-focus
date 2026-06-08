@@ -82,7 +82,7 @@ texto."]
 
 ---
 
-## Passo 5 — Salvar o resultado
+## Passo 5 — Salvar o resultado (OBRIGATÓRIO antes do Passo 6)
 
 Salve o documento gerado no Passo 4 em:
 
@@ -95,24 +95,37 @@ publicação do boletim, não a data de hoje).
 
 Se já existir um arquivo com esse nome, **não sobrescreva** — registre:
 `Resumo para esta data já existe em output/focus/. Nenhuma ação tomada.`
+e **pare aqui** (não execute o Passo 6 — o rascunho dessa data já foi
+criado anteriormente).
+
+Se o arquivo for novo, faça commit e push dessa adição para o branch
+`main` do repositório, com mensagem do tipo
+`docs: adiciona resumo executivo do Focus de DD/MM/AAAA`.
+
+**Este passo é obrigatório e deve ser concluído (arquivo salvo e commitado)
+antes de prosseguir para o Passo 6.** Não pule para o envio do e-mail sem
+ter persistido o arquivo no repositório.
 
 ---
 
-## Passo 6 — Enviar o resumo por e-mail
+## Passo 6 — Criar rascunho do resumo no Gmail
 
-Envie o documento gerado no Passo 4 por e-mail para **fabrizzioconde@gmail.com**
-usando a ferramenta Gmail disponível.
+**Importante: a ferramenta Gmail disponível só permite CRIAR RASCUNHOS
+(`create_draft`), não enviar e-mails diretamente.** Portanto, este passo
+gera um rascunho pronto para revisão e envio manual — não um envio efetivo.
+
+Crie um rascunho endereçado a **fabrizzioconde@gmail.com** com:
 
 **Assunto:** `Focus BCB — DD/MM/AAAA` (onde `DD/MM/AAAA` é a data de publicação
 do boletim, no formato brasileiro).
 
-**Corpo:** cole o conteúdo completo do arquivo `.md` gerado, incluindo o
+**Corpo:** o conteúdo completo do arquivo `.md` salvo no Passo 5, incluindo o
 cabeçalho com a nota de frescor se ela estiver presente.
 
 **Regras:**
-- Envie apenas se o Passo 5 tiver sido concluído com sucesso (arquivo salvo
-  ou já existente).
-- Se o Passo 5 tiver sido pulado por arquivo já existente, não envie o e-mail
-  novamente — o resumo dessa data já foi entregue anteriormente.
-- Se o envio falhar, registre o erro mas não interrompa nem tente reenviar
-  automaticamente.
+- Só crie o rascunho se o Passo 5 tiver salvo um arquivo **novo** nesta
+  execução. Se o Passo 5 já tiver parado por arquivo existente, não crie
+  outro rascunho — o desta data já existe.
+- Se a criação do rascunho falhar, registre o erro mas não interrompa nem
+  tente novamente automaticamente. O resumo já estará salvo no repositório
+  (Passo 5), então nada se perde.

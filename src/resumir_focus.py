@@ -162,6 +162,12 @@ def gerar_resumo(
 
 
 def main() -> None:
+    # O console do Windows usa cp1252 por padrão e quebra ao imprimir emojis
+    # (ex.: ⚠️ na nota de frescor). Força UTF-8 na saída quando possível.
+    for fluxo in (sys.stdout, sys.stderr):
+        if hasattr(fluxo, "reconfigure"):
+            fluxo.reconfigure(encoding="utf-8")
+
     parser = argparse.ArgumentParser(
         description="Gera o resumo executivo do Focus mais recente via API da Anthropic."
     )
@@ -169,6 +175,12 @@ def main() -> None:
         "--txt",
         metavar="CAMINHO",
         help="Caminho explícito para o .txt. Se omitido, usa o mais recente de data/.",
+    )
+    parser.add_argument(
+        "--ignorar-frescor",
+        action="store_true",
+        help="Ignora a trava de 'mais de 7 dias'. Use apenas para gerar "
+        "resumos de edições antigas (backfill manual).",
     )
     args = parser.parse_args()
 
@@ -205,12 +217,16 @@ def main() -> None:
     # Passo 2 — frescor
     nota_frescor, deve_parar = verificar_frescor(data_pub, date.today())
     if deve_parar:
-        print(
-            "Arquivo com mais de 7 dias. Rode novamente o pipeline de download "
-            "antes de gerar o resumo.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        if not args.ignorar_frescor:
+            print(
+                "Arquivo com mais de 7 dias. Rode novamente o pipeline de download "
+                "antes de gerar o resumo (ou use --ignorar-frescor para backfill).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        dias = (date.today() - data_pub).days
+        nota_frescor = f"⚠️ Texto com {dias} dias — edição antiga gerada manualmente (backfill)."
+        print(f"--ignorar-frescor ativo: gerando edição de {dias} dias atrás.")
     if nota_frescor:
         print(f"Aviso de frescor: {nota_frescor}")
 

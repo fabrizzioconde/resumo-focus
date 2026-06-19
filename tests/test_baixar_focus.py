@@ -1,7 +1,8 @@
 """Testes para src/baixar_focus.py."""
 
+import re
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -9,52 +10,88 @@ import pytest
 # Permite importar os módulos de src/ sem instalar o pacote
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from baixar_focus import ultima_segunda, baixar
+import baixar_focus
+from baixar_focus import baixar
 
 
 # ---------------------------------------------------------------------------
-# Testes offline (sem rede) — ultima_segunda
+# Infra de teste offline — simula o requests.get sem acessar a rede
 # ---------------------------------------------------------------------------
 
-def test_ultima_segunda_quinta():
-    # 2026-06-04 é quinta-feira (weekday=3); segunda da mesma semana é 2026-06-01
-    assert ultima_segunda(date(2026, 6, 4)) == date(2026, 6, 1)
+class _FakeResp:
+    def __init__(self, status_code: int, content: bytes):
+        self.status_code = status_code
+        self.content = content
 
 
-def test_ultima_segunda_terca():
-    # 2026-06-02 é terça-feira (weekday=1); segunda da mesma semana é 2026-06-01
-    assert ultima_segunda(date(2026, 6, 2)) == date(2026, 6, 1)
+def _data_da_url(url: str) -> date:
+    """Extrai a data AAAAMMDD do padrão R<AAAAMMDD>.pdf na URL."""
+    m = re.search(r"R(\d{8})\.pdf", url)
+    return datetime.strptime(m.group(1), "%Y%m%d").date()
 
 
-def test_ultima_segunda_quando_hoje_e_segunda():
-    # 2026-06-01 é segunda-feira; deve recuar uma semana inteira para 2026-05-25
-    assert ultima_segunda(date(2026, 6, 1)) == date(2026, 5, 25)
-
-
-def test_ultima_segunda_domingo():
-    # 2026-05-31 é domingo (weekday=6); segunda da mesma semana é 2026-05-25
-    assert ultima_segunda(date(2026, 5, 31)) == date(2026, 5, 25)
-
-
-def test_ultima_segunda_varredura_60_dias():
-    # Para qualquer dia em uma janela de 60 dias:
-    #   1. o resultado deve ser uma segunda-feira (weekday == 0)
-    #   2. o resultado deve ser ESTRITAMENTE anterior à data dada
-    base = date(2026, 6, 1)
-    for offset in range(60):
-        hoje = base + timedelta(days=offset)
-        resultado = ultima_segunda(hoje)
-        assert resultado.weekday() == 0, (
-            f"{hoje} ({hoje.strftime('%A')}): "
-            f"esperava segunda, obteve {resultado} ({resultado.strftime('%A')})"
-        )
-        assert resultado < hoje, (
-            f"{hoje}: resultado {resultado} não é estritamente anterior"
-        )
+def _fake_get_factory(datas_com_pdf: set[date]):
+    """Devolve um fake de requests.get que só serve %PDF nas datas informadas."""
+    def fake_get(url, **kwargs):
+        d = _data_da_url(url)
+        if d in datas_com_pdf:
+            return _FakeResp(200, b"%PDF-1.7 conteudo simulado")
+        return _FakeResp(404, b"<html>nao encontrado</html>")
+    return fake_get
 
 
 # ---------------------------------------------------------------------------
-# Teste com rede — baixar()
+# Testes offline — baixar() recua a partir de hoje até achar a sexta de referência
+# ---------------------------------------------------------------------------
+
+def test_baixar_recua_ate_a_sexta(tmp_path, monkeypatch):
+    # Hoje = quinta 2026-06-18; PDF só existe na sexta anterior 2026-06-12
+    hoje = date(2026, 6, 18)
+    sexta = date(2026, 6, 12)
+    monkeypatch.setattr(baixar_focus.requests, "get", _fake_get_factory({sexta}))
+
+    data_pub, caminho = baixar(tmp_path, hoje=hoje)
+
+    assert data_pub == sexta
+    assert caminho.name == "focus_2026-06-12.pdf"
+    assert caminho.exists()
+    assert caminho.read_bytes()[:4] == b"%PDF"
+
+
+def test_baixar_para_na_primeira_data_valida(tmp_path, monkeypatch):
+    # Se hoje já tem PDF, deve parar em hoje sem recuar
+    hoje = date(2026, 6, 12)
+    monkeypatch.setattr(baixar_focus.requests, "get", _fake_get_factory({hoje}))
+
+    data_pub, caminho = baixar(tmp_path, hoje=hoje)
+
+    assert data_pub == hoje
+    assert caminho.name == "focus_2026-06-12.pdf"
+
+
+def test_baixar_levanta_quando_nada_encontrado(tmp_path, monkeypatch):
+    # Nenhuma data tem PDF → estoura RuntimeError após MAX_TENTATIVAS
+    monkeypatch.setattr(baixar_focus.requests, "get", _fake_get_factory(set()))
+
+    with pytest.raises(RuntimeError, match="Nenhum PDF encontrado"):
+        baixar(tmp_path, hoje=date(2026, 6, 18))
+
+
+def test_baixar_ignora_status_200_que_nao_e_pdf(tmp_path, monkeypatch):
+    # Site pode responder 200 com HTML; só conteúdo iniciando em %PDF vale
+    def fake_get(url, **kwargs):
+        d = _data_da_url(url)
+        if d == date(2026, 6, 12):
+            return _FakeResp(200, b"%PDF-1.7 ok")
+        return _FakeResp(200, b"<html>pagina de erro</html>")
+    monkeypatch.setattr(baixar_focus.requests, "get", fake_get)
+
+    data_pub, _ = baixar(tmp_path, hoje=date(2026, 6, 18))
+    assert data_pub == date(2026, 6, 12)
+
+
+# ---------------------------------------------------------------------------
+# Teste com rede — baixar() real contra o site do BCB
 # ---------------------------------------------------------------------------
 
 @pytest.mark.network

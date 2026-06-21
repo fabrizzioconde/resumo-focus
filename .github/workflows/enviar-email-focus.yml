@@ -1,0 +1,64 @@
+name: Enviar Focus por e-mail (manual)
+
+# Workflow auxiliar, disparado só manualmente, para TESTAR o envio de e-mail
+# de forma isolada — sem baixar PDF nem gerar resumo. Apenas pega o resumo
+# .md mais recente já versionado e o envia. Útil para validar os secrets
+# GMAIL_USERNAME / GMAIL_APP_PASSWORD sem depender do pipeline completo.
+on:
+  workflow_dispatch:
+    inputs:
+      ignorar_frescor:
+        description: "Enviar mesmo que o resumo tenha mais de 7 dias"
+        type: boolean
+        default: true
+      destinatario:
+        description: "E-mail de destino"
+        type: string
+        default: "claude.projetos.ai@gmail.com"
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Selecionar resumo mais recente
+        id: resumo
+        run: |
+          arquivo=$(ls output/focus/focus_*.md 2>/dev/null | sort | tail -n 1)
+          if [ -z "$arquivo" ]; then
+            echo "Nenhum resumo .md encontrado em output/focus/; nada a enviar."
+            echo "enviar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base=$(basename "$arquivo" .md)   # focus_AAAA-MM-DD
+          iso=${base#focus_}                # AAAA-MM-DD
+          dias=$(( ( $(date -u +%s) - $(date -u -d "$iso" +%s) ) / 86400 ))
+          if [ "${{ inputs.ignorar_frescor }}" != "true" ] && [ "$dias" -gt 7 ]; then
+            echo "Resumo mais recente ($iso) tem mais de 7 dias e ignorar_frescor=false; pulando envio."
+            echo "enviar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          br=$(date -u -d "$iso" +%d/%m/%Y)
+          echo "Selecionado: $arquivo (data $br, $dias dias atrás)"
+          {
+            echo "enviar=true"
+            echo "arquivo=$arquivo"
+            echo "assunto=Focus BCB — $br (envio manual)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Enviar resumo por e-mail
+        if: steps.resumo.outputs.enviar == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          from: Boletim Focus <${{ secrets.GMAIL_USERNAME }}>
+          to: ${{ inputs.destinatario }}
+          subject: ${{ steps.resumo.outputs.assunto }}
+          body: file://${{ steps.resumo.outputs.arquivo }}
+          convert_markdown: true

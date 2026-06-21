@@ -79,3 +79,23 @@ A etapa 1 é agendada toda segunda-feira via `.github/workflows/`. Se o BCB
 publicar na terça por conta de feriado, a lógica de download recua dia a dia
 até encontrar o PDF. A etapa 2 consome o texto já salvo em `data/`, sem
 nunca acessar o site do BCB diretamente.
+
+## Envio automático por e-mail
+
+Ao final do workflow, depois de gerar e commitar o resumo, o GitHub Actions
+**envia o `.md` mais recente por e-mail automaticamente** (sem revisão humana)
+para `claude.projetos.ai@gmail.com`, via SMTP do Gmail. Só envia se o resumo
+tiver até 7 dias, evitando reenviar resumos antigos em reexecuções manuais.
+
+Isso é **independente** da rotina local que cria um rascunho no Gmail para
+revisão (ver `routine-prompt.md`) — as duas coisas coexistem.
+
+### Secrets necessários (repo → Settings → Secrets and variables → Actions)
+
+| Secret | Conteúdo |
+|---|---|
+| `GMAIL_USERNAME` | E-mail da conta **remetente** (ex.: `claude.projetos.ai@gmail.com`) |
+| `GMAIL_APP_PASSWORD` | **App Password** de 16 dígitos dessa conta (exige verificação em duas etapas ativa; **não** é a senha normal) |
+
+A App Password é gerada em: conta Google → Segurança → Verificação em duas
+etapas → Senhas de app.

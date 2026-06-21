@@ -48,3 +48,46 @@ jobs:
           git diff --cached --quiet || \
             git commit -m "chore: Focus $(date -u +%Y-%m-%d) [skip ci]"
           git push
+
+      # Envio automático do resumo, sem revisão humana. Complementa (não
+      # substitui) a rotina local que cria o rascunho no Gmail.
+      - name: Selecionar resumo mais recente
+        id: resumo
+        run: |
+          arquivo=$(ls output/focus/focus_*.md 2>/dev/null | sort | tail -n 1)
+          if [ -z "$arquivo" ]; then
+            echo "Nenhum resumo .md encontrado; pulando envio de e-mail."
+            echo "enviar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base=$(basename "$arquivo" .md)   # focus_AAAA-MM-DD
+          iso=${base#focus_}                # AAAA-MM-DD
+          # Frescor: não reenviar resumos antigos (ex.: rerun manual numa
+          # semana em que o pipeline de download falhou).
+          dias=$(( ( $(date -u +%s) - $(date -u -d "$iso" +%s) ) / 86400 ))
+          if [ "$dias" -gt 7 ]; then
+            echo "Resumo mais recente ($iso) tem mais de 7 dias; pulando envio."
+            echo "enviar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          br=$(date -u -d "$iso" +%d/%m/%Y)
+          {
+            echo "enviar=true"
+            echo "arquivo=$arquivo"
+            echo "assunto=Focus BCB — $br"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Enviar resumo por e-mail
+        if: steps.resumo.outputs.enviar == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          from: Boletim Focus <${{ secrets.GMAIL_USERNAME }}>
+          to: claude.projetos.ai@gmail.com
+          subject: ${{ steps.resumo.outputs.assunto }}
+          body: file://${{ steps.resumo.outputs.arquivo }}
+          convert_markdown: true

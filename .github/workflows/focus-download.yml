@@ -2,7 +2,13 @@ name: Download Focus BCB
 
 on:
   schedule:
-    - cron: "15 12 * * 1"   # segunda-feira às 12h15 UTC = 9h15 BRT (UTC-3)
+    # O agendamento do GitHub Actions é best-effort (atrasa ou até descarta
+    # execuções). Disparamos em vários horários como redundância; o envio de
+    # e-mail é idempotente (só sai quando um resumo NOVO é criado), então as
+    # execuções extras não geram e-mail duplicado.
+    - cron: "30 11 * * 1"   # seg 08h30 BRT — logo após a publicação do Focus
+    - cron: "30 14 * * 1"   # seg 11h30 BRT — reforço caso o 1º atrase/não dispare
+    - cron: "30 11 * * 2"   # ter 08h30 BRT — rede de segurança se a segunda falhar
   workflow_dispatch:         # permite disparo manual pela UI do GitHub
 
 # Desde fev/2023 o GITHUB_TOKEN vem somente leitura por padrão em repos novos;
@@ -34,9 +40,29 @@ jobs:
         run: python src/extrair_texto.py
 
       - name: Gerar resumo executivo
+        id: resumo
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python src/resumir_focus.py
+        run: |
+          saida=$(python src/resumir_focus.py)
+          echo "$saida"
+          # Idempotência do e-mail: resumir_focus.py imprime "Resumo salvo em:
+          # <caminho>" SOMENTE quando cria um arquivo novo; em reexecução já
+          # existente imprime "...já existe" e nada deve ser enviado.
+          criado=$(echo "$saida" | sed -n 's/^Resumo salvo em: //p')
+          if [ -n "$criado" ]; then
+            base=$(basename "$criado" .md)        # focus_AAAA-MM-DD
+            iso=${base#focus_}                    # AAAA-MM-DD
+            br=$(date -u -d "$iso" +%d/%m/%Y)
+            {
+              echo "enviar=true"
+              echo "arquivo=output/focus/${base}.md"
+              echo "assunto=Focus BCB — $br"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "Nenhum resumo novo criado; pulando envio de e-mail."
+            echo "enviar=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Commitar arquivos gerados
         run: |
@@ -50,33 +76,8 @@ jobs:
           git push
 
       # Envio automático do resumo, sem revisão humana. Complementa (não
-      # substitui) a rotina local que cria o rascunho no Gmail.
-      - name: Selecionar resumo mais recente
-        id: resumo
-        run: |
-          arquivo=$(ls output/focus/focus_*.md 2>/dev/null | sort | tail -n 1)
-          if [ -z "$arquivo" ]; then
-            echo "Nenhum resumo .md encontrado; pulando envio de e-mail."
-            echo "enviar=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          base=$(basename "$arquivo" .md)   # focus_AAAA-MM-DD
-          iso=${base#focus_}                # AAAA-MM-DD
-          # Frescor: não reenviar resumos antigos (ex.: rerun manual numa
-          # semana em que o pipeline de download falhou).
-          dias=$(( ( $(date -u +%s) - $(date -u -d "$iso" +%s) ) / 86400 ))
-          if [ "$dias" -gt 7 ]; then
-            echo "Resumo mais recente ($iso) tem mais de 7 dias; pulando envio."
-            echo "enviar=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          br=$(date -u -d "$iso" +%d/%m/%Y)
-          {
-            echo "enviar=true"
-            echo "arquivo=$arquivo"
-            echo "assunto=Focus BCB — $br"
-          } >> "$GITHUB_OUTPUT"
-
+      # substitui) a rotina local que cria o rascunho no Gmail. O gating de
+      # envio (idempotente) é definido no passo "Gerar resumo executivo".
       - name: Enviar resumo por e-mail
         if: steps.resumo.outputs.enviar == 'true'
         uses: dawidd6/action-send-mail@v3

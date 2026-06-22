@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
+import requests
 
 # Permite importar os módulos de src/ sem instalar o pacote
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -19,9 +20,10 @@ from baixar_focus import baixar
 # ---------------------------------------------------------------------------
 
 class _FakeResp:
-    def __init__(self, status_code: int, content: bytes):
+    def __init__(self, status_code: int, content: bytes, headers: dict | None = None):
         self.status_code = status_code
         self.content = content
+        self.headers = headers or {}
 
 
 def _data_da_url(url: str) -> date:
@@ -78,7 +80,9 @@ def test_baixar_levanta_quando_nada_encontrado(tmp_path, monkeypatch):
 
 
 def test_baixar_ignora_status_200_que_nao_e_pdf(tmp_path, monkeypatch):
-    # Site pode responder 200 com HTML; só conteúdo iniciando em %PDF vale
+    # Site pode responder 200 com HTML; só conteúdo iniciando em %PDF vale.
+    # Cada data não-PDF é retentada (transitório) e depois recua; sleep no-op
+    # mantém o teste rápido.
     def fake_get(url, **kwargs):
         d = _data_da_url(url)
         if d == date(2026, 6, 12):
@@ -86,8 +90,52 @@ def test_baixar_ignora_status_200_que_nao_e_pdf(tmp_path, monkeypatch):
         return _FakeResp(200, b"<html>pagina de erro</html>")
     monkeypatch.setattr(baixar_focus.requests, "get", fake_get)
 
-    data_pub, _ = baixar(tmp_path, hoje=date(2026, 6, 18))
+    data_pub, _ = baixar(tmp_path, hoje=date(2026, 6, 18), sleep=lambda *_: None)
     assert data_pub == date(2026, 6, 12)
+
+
+def test_baixar_repete_em_erro_transitorio_e_sucede(tmp_path, monkeypatch):
+    # O BCB responde 5xx nas primeiras vezes para a SEXTA e o PDF em seguida
+    # (soluço transitório). Deve retentar a MESMA data e NÃO recuar para uma
+    # edição mais antiga.
+    sexta = date(2026, 6, 12)
+    estado = {"falhas_restantes": 2}
+
+    def fake_get(url, **kwargs):
+        d = _data_da_url(url)
+        if d != sexta:
+            return _FakeResp(404, b"")
+        if estado["falhas_restantes"] > 0:
+            estado["falhas_restantes"] -= 1
+            return _FakeResp(503, b"<html>indisponivel</html>")
+        return _FakeResp(200, b"%PDF-1.7 ok")
+    monkeypatch.setattr(baixar_focus.requests, "get", fake_get)
+
+    data_pub, caminho = baixar(tmp_path, hoje=sexta, sleep=lambda *_: None)
+
+    assert data_pub == sexta  # retentou a mesma data, não recuou
+    assert caminho.read_bytes()[:4] == b"%PDF"
+
+
+def test_baixar_repete_em_erro_de_rede(tmp_path, monkeypatch):
+    # Exceção de rede (timeout/conexão) é transitória: deve retentar em vez de
+    # derrubar o processo.
+    sexta = date(2026, 6, 12)
+    estado = {"falhas_restantes": 1}
+
+    def fake_get(url, **kwargs):
+        d = _data_da_url(url)
+        if d != sexta:
+            return _FakeResp(404, b"")
+        if estado["falhas_restantes"] > 0:
+            estado["falhas_restantes"] -= 1
+            raise requests.exceptions.ConnectionError("timeout simulado")
+        return _FakeResp(200, b"%PDF-1.7 ok")
+    monkeypatch.setattr(baixar_focus.requests, "get", fake_get)
+
+    data_pub, _ = baixar(tmp_path, hoje=sexta, sleep=lambda *_: None)
+
+    assert data_pub == sexta
 
 
 # ---------------------------------------------------------------------------
